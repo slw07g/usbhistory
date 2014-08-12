@@ -1,5 +1,9 @@
-from _winreg import *
+try:
+	from _winreg import *
+except Exception, e:
+	print "WARNING: Could not import _winreg. Live system registry analysis cannot be done. You MUST specify a registry hive file."
 import argparse
+from regparse import *
 from datetime import *
 
 class USBInfo:
@@ -50,7 +54,7 @@ def parseHardwareInstance(deviceInstance = None):
 	
 	return DeviceClass(hardwareID, instanceID)
 	
-def getUSBHistory(controlSet="CurrentControlSet"):
+def getUSBHistory_Live(controlSet="CurrentControlSet"):
 	controlSetKey = "SYSTEM\\" + controlSet + "\\"
 	deviceClassesKey = controlSetKey + "Control\\DeviceClasses\\"
 	usbEnumKey = controlSetKey + "Enum\\USB\\"
@@ -98,11 +102,19 @@ def getUSBHistory(controlSet="CurrentControlSet"):
 			break
 	return usbHistories
 
-def main():
+def main(winregLoaded):
 	controlSets = ["CurrentControlSet", "ControlSet001", "ControlSet002", "ControlSet003"]
 	for c in controlSets:
-		entries = getUSBHistory(c)
+		if winregLoaded is True:
+			entries = getUSBHistory_Live(c)
+		else:
+			entries = getUSBHistory_offline(c)
 		print entries	
 
 if __name__ ==  "__main__":
-	main()
+	winregAvailable = True
+	try:
+		imp.find_module("_winreg")
+	except:
+		winregAvailable = False
+	main(winregAvailable)
