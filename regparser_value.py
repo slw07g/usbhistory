@@ -1,6 +1,12 @@
 import sys
 import struct
 
+class RegParser_ValueError:
+	def __init__(self, msg):
+		self.value = msg
+	def __str__(self):
+		return repr(self.value)
+
 class RegParser_Value:
 	REGPARSER_VALUE_HEADER_LENGTH = 0x18
 	REGPARSER_VALUE_OFFSET_TO_FIRST_HBIN = 0x1000
@@ -10,7 +16,7 @@ class RegParser_Value:
 	def __init__(self, offset, regData):
 		self.regData = regData
 		self.allocated = 0
-		if len(self.regData) < RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:
+		if len(self.regData[offset:]) < RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:
 			RegParser_Value.exitError(RegParser_Value.REGPARSER_VALUE_ERROR_LENGTH)
 			
 		t = (self.valueLen, 
@@ -25,17 +31,15 @@ class RegParser_Value:
 			RegParser_Value.exitError("Invalid Value name Length")
 			
 		self.name = struct.unpack_from(str(self.nameLength) + "s", self.regData[offset+RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:])[0]
-		print self.name
 		
-		print t
 		
 		if self.valueSig != "vk":
 			RegParser_Value.exitError("vk Signature not found where expected")
 		
 		if self.flags & 1 != 0:
-			self.name = self.name.decode("cp1252")
+			self.name = self.name.decode("cp1252").encode("Utf-8")
 		else:
-			self.name = self.name.decode("Utf-16")
+			self.name = self.name.decode("Utf-16").encode("Utf-8")
 			
 		if self.valueLen> 0x7fffffff:
 			self.allocated = 1
@@ -61,9 +65,13 @@ class RegParser_Value:
 				self.data = self.extractValueData()
 	
 	def __str__(self):
-		return "Value: %-20s\tData:%s" % (self.name, self.getValueData())
+		vn = "ValueName: %s" % self.name 
+		vd = "ValueData: %s" % self.getValueData()
+		return "%-40s\t%s\n" % (vn, vd)
+	
 	def __repr__(self):
 		return self.__str__()
+	
 	def getName(self):
 		return self.name
 			
@@ -92,7 +100,7 @@ class RegParser_Value:
 			if len(d) < 8:
 				RegParser_Value.exitError("Invalid value data")
 			t = (sig, numDataBlocks, dataBlockListOffset) = struct.unpack_from("<2sHI", d)
-			print t
+			
 			if sig != "db":
 				RegParser_Value.exitError("Invalid data block signature")
 		
@@ -146,22 +154,27 @@ class RegParser_Value:
 		t = self.dataType
 		d = self.data
 		
+		
 		if d is None:
 			return None
 		data = None
 		if t == REG_DWORD:
 			if len(d) == 4:
-				data = struct.unpack("<I", d)
+				data = struct.unpack("<I", d)[0]
 		
 		elif t == REG_DWORD_BIG_ENDIAN:
 			if len(d) == 4:
-				data = struct.unpack("I", d)
+				data = struct.unpack("I", d)[0]
+		
+		elif t == REG_QWORD or t == REG_QWORD_LITTLE_ENDIAN:
+			if len(d) == 8:
+				data = struct.unpack("<Q", d)[0]
 		
 		elif t == REG_SZ or t == REG_EXPAND_SZ:
-			data = d.decode("Utf-16").encode("utf-8")
+			data = d.decode("Utf-16").encode("utf-8").rstrip("\0")
 		
 		elif t == REG_MULTI_SZ:
-			data = d.decode("Utf-16").encode("utf-8").split("\x00")
+			data = d.decode("Utf-16").encode("utf-8").rstrip("\0")
 			
 		elif t == REG_BINARY:
 			data = d.encode("hex")
@@ -173,6 +186,5 @@ class RegParser_Value:
 		
 	@staticmethod
 	def exitError(msg):
-		print msg
-		sys.exit(-1)
+		raise RegParser_ValueError(msg)
 			

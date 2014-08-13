@@ -5,6 +5,13 @@ import sys
 import struct
 from regparser_value import *
 
+class RegParser_KeyError:
+	def __init__(self, msg):
+		self.value = msg
+	
+	def __str__(self):
+		return repr(self.value)
+		
 class RegParser_Key:
 	REGPARSER_KEY_HEADER_LENGTH = 0x50
 	REGPARSER_KEY_OFFSET_TO_FIRST_HBIN = 0x1000
@@ -41,13 +48,12 @@ class RegParser_Key:
 			
 		self.keyName = struct.unpack_from(str(self.keyNameLength) + "s", self.regData[offset+RegParser_Key.REGPARSER_KEY_HEADER_LENGTH:])[0]
 		
-		print self.keyName
 		
 		if self.flags & 0x20 != 0:
-			self.keyName = self.keyName.decode("cp1252")
+			self.keyName = self.keyName.decode("cp1252").encode("Utf-8")
 		else:
-			self.keyName = self.keyName.decode("Utf-16")
-		print t
+			self.keyName = self.keyName.decode("Utf-16").encode("Utf-8")
+	
 		
 		if self.keySig != "nk":
 			RegParser.exitError("nk Signature not found where expected")
@@ -69,13 +75,18 @@ class RegParser_Key:
 		
 		if self.keyLen < RegParser_Key.REGPARSER_KEY_HEADER_LENGTH:
 			RegParser_Key.exitError("Invalid key length")
-		
+		if self.isRoot() is True and parent is not None:
+			self.parentKey = None
+			self.keyName = parent
 		self.key = self.parentKey + "\\" + self.keyName if self.parentKey is not None else self.keyName
 		
-	
-	def getTimeStamp(self):
+		
+	def queryTimestamp(self):
 		return self.timestamp
 	
+	def getKeyPath(self):
+		return self.key
+		
 	def getNumKeys(self):
 		return self.numKeys
 	
@@ -105,10 +116,10 @@ class RegParser_Key:
 		if len(skl) < 8:
 			RegParser_Key.exitError("Invalid subkey list header length")
 		lh = (length, sig, numEntries) = struct.unpack_from("<I2sH", skl)
-		print lh
+		
 		
 		skl_len = 2 * 4 * numEntries if sig == "lf" or sig == "lh" else 4 * numEntries if sig == "ri" or sig == "li" else RegParser_Key.exitError("Invalid Subkey List Signature")
-		print skl_len
+		
 		if len(skl[8:]) < skl_len:
 			RegParser_Key.exitError("Invalid subkey list length")
 		
@@ -142,6 +153,8 @@ class RegParser_Key:
 	
 	def getSubkey(self, i):
 		offsets = self.getSubkeyOffsets()
+		if offsets is None or i > len(offsets):
+			return None
 		return RegParser_Key(offsets[i], self.key, self.regData)
 		
 		
@@ -151,7 +164,8 @@ class RegParser_Key:
 		
 		if len(vl) < vl_len:
 			RegParser_Key.exitError("Invalid Value list length")
-		vl = vl[:vl_len]	
+		vl = vl[:vl_len]
+		#vl_len -= 4	
 		numValues = self.numValues
 		
 		valueOffsets = []
@@ -160,7 +174,9 @@ class RegParser_Key:
 			return valueOffsets
 		
 		while vl_len > 3 and numValues >= 0:
-			valueOffsets += [struct.unpack_from("<I", vl)[0] + RegParser_Key.REGPARSER_KEY_OFFSET_TO_FIRST_HBIN]
+			vo = struct.unpack_from("<I", vl)[0] + RegParser_Key.REGPARSER_KEY_OFFSET_TO_FIRST_HBIN
+			if vo is not None:
+				valueOffsets += [vo]
 			vl = vl[4:]
 			vl_len -= 4
 			numValues -= 1
@@ -182,16 +198,15 @@ class RegParser_Key:
 		s = subkeyName.lower()
 		for i in range(self.numKeys):
 			k = self.getSubkey(i)
-			print "%-20s\t%-20s" %(k.keyName, s)
 			if str(k.keyName).lower() == s:
 				return k
 		return None
 	
 	'''Returns a tuple (<value name>, <value data>)'''	
-	def getValueByIndex(self,i):
-		vo = self.getValueOffsets()
+	def queryValueByIndex(self,i):
+		vo = self.getValueOffsets()[1:]
 		v = None
-		if i < len(vo) and i > 0:
+		if i < len(vo) and i >= 0:
 			v = RegParser_Value(vo[i], self.regData)
 		if v is None:
 			return None
@@ -201,7 +216,7 @@ class RegParser_Key:
 	def queryValueByName(self, valueName):
 		if valueName is None:
 			return None
-		vo = self.getValueOffsets()
+		vo = self.getValueOffsets()[1:]
 		vn = valueName.lower()
 		for o in vo:
 			v = RegParser_Value(o, self.regData)
@@ -209,19 +224,18 @@ class RegParser_Key:
 				return v.getValueData()
 		
 	def getAllValues(self):
+		vo = self.getValueOffsets()[1:]
 		v = []
-		for i in range(10):
-			tmp = [self.getValueByIndex(i)]
+		for i in range(len(vo)):
+			tmp = RegParser_Value(vo[i], self.regData)
 			if tmp is None:
-				return v
-			v += tmp
-			print v[i]
+				break
+			v += [(tmp.getName(), tmp.getValueData())]
 		return v
 					
 		
 			
 	@staticmethod
 	def exitError(msg):
-		print msg
-		sys.exit(-1)
+		raise RegParser_KeyError(msg)
 			
