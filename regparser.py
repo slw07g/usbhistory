@@ -21,7 +21,14 @@ class RegParser:
 	'''Returns a subkey. keyName may be a path'''	
 	@classmethod
 	def openKey(cls, key, keyName):
+		if keyName is None:
+			return None
+		keyName = keyName.rstrip("\\")
 		return RegParser_Key.openKey(key, keyName)
+
+	@classmethod
+	def openSubkeyByIndex(cls, key, index):
+		return key.getSubkey(index)
 	
 	'''Returns time in 100s of nanoseconds since Jan 1, 1601. '''
 	@classmethod
@@ -29,10 +36,10 @@ class RegParser:
 		return key.queryTimestamp()
 	
 	@classmethod
-	def timestampToDate(cls, timestamp):
+	def timestampToDatetime(cls, timestamp):
 		if timestamp is None:
 			return None
-		startDate = datetime(1600,1,1)
+		startDate = datetime(1601,1,1)
 		return startDate + timedelta(seconds=timestamp*(10**-9)*100)
 	
 	'''Returns a list of (valuename, valuedata) tuples'''
@@ -68,7 +75,7 @@ def main():
 		k = RegParser.openKey(rk, keyPath)
 		v = RegParser.getAllKeyValues(k)
 		print k
-		print RegParser.timestampToDate(RegParser.getKeyTimestamp(k))
+		print RegParser.timestampToDatetime(RegParser.getKeyTimestamp(k))
 		print v
 		print rp.getKeyValueByIndex(k, 0)
 	None

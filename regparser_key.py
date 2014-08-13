@@ -90,6 +90,12 @@ class RegParser_Key:
 	def getNumKeys(self):
 		return self.numKeys
 	
+	def getKeyName(self):
+		return self.keyName
+		
+	def getKeyPath(self):
+		return self.key
+		
 	def isRoot(self):
 		if (self.flags & 4) != 0 or (self.flags & 8) != 0:
 			return True
@@ -109,8 +115,10 @@ class RegParser_Key:
 	def getSubkeyOffsets(self, offset=None):
 		if offset is None:
 			offset = self.subkeyListOffset
+			
 		if offset == 0xffffffff or self.numKeys == 0:
 			return None
+			
 		skl = self.regData[offset:]
 		
 		if len(skl) < 8:
@@ -153,7 +161,7 @@ class RegParser_Key:
 	
 	def getSubkey(self, i):
 		offsets = self.getSubkeyOffsets()
-		if offsets is None or i > len(offsets):
+		if offsets is None or i >= len(offsets):
 			return None
 		return RegParser_Key(offsets[i], self.key, self.regData)
 		

@@ -3,8 +3,9 @@ try:
 except Exception, e:
 	print "WARNING: Could not import _winreg. Live system registry analysis cannot be done. You MUST specify a registry hive file."
 import argparse
-from regparse import *
+from regparser import RegParser
 from datetime import *
+import traceback
 
 class USBInfo:
 	def __init__(self):
@@ -44,7 +45,6 @@ def parseHardwareInstance(deviceInstance = None):
 	if deviceInstance[0:4].upper() != "USB\\":
 		return None
 	
-	print "Found USB"
 	locSecondSlash = deviceInstance[4:].find("\\")
 	if locSecondSlash is None:
 		return None
@@ -53,7 +53,68 @@ def parseHardwareInstance(deviceInstance = None):
 	instanceID = deviceInstance[4 + locSecondSlash + 1:]
 	
 	return DeviceClass(hardwareID, instanceID)
+
+'''Collect USB History from an NT registry file. File must be the "system" hive'''
+def getUSBHistory_Offline(fileName, controlSet="CurrentControlSet"):
+	rp = RegParser
+	r = rp(fileName, "lolwut")
 	
+	controlSetKey = controlSet 
+	deviceClassesKey = controlSetKey + "\\Control\\DeviceClasses"
+	usbEnumKey = controlSetKey + "\\Enum\\USB"
+	
+	rk = r.getHiveRootKey()
+	try:
+		k = rp.openKey(rk, deviceClassesKey)
+	except Exception, e:
+		print e
+		return None
+	
+	if k is None:
+		return None
+	usbHistories = []
+	
+	for i in range(1024):
+		try:
+			cdck = rp.openSubkeyByIndex(k, i)
+			if cdck is None:
+				break
+			cdcs = rp.openSubkeyByIndex(cdck, 0)
+			if cdcs is None:
+				break
+			devInstance = rp.getKeyValue(rp.openKey(cdck,cdcs.getKeyName()), "DeviceInstance")
+			
+			di = parseHardwareInstance(devInstance)
+			if di is None:
+				continue
+			devKeyString = usbEnumKey + "\\" + di.hardwareID + "\\" + di.instanceID
+			hDevKey = rp.openKey(rk, devKeyString)
+			if hDevKey is None:
+				break
+			usbHistory = USBInfo()
+			firstCreated = rp.timestampToDatetime(rp.getKeyTimestamp(cdck))
+			lastModified = rp.timestampToDatetime(rp.getKeyTimestamp(hDevKey))
+			usbHistory.addProperty("First Created", firstCreated)
+			usbHistory.addProperty("Last Modified", lastModified)
+			for j in range(1024):
+				try:
+					ui = rp.getKeyValueByIndex(hDevKey, j)
+					if ui is None:
+						continue
+				except Exception, e:
+					print traceback.format_exc()
+					print e
+					break
+				usbHistory.addProperty(ui[0],ui[1])
+			usbHistories += [usbHistory]
+		
+		except Exception, e:
+			print traceback.format_exc()
+			print e
+			break
+	return usbHistories
+			
+		
 def getUSBHistory_Live(controlSet="CurrentControlSet"):
 	controlSetKey = "SYSTEM\\" + controlSet + "\\"
 	deviceClassesKey = controlSetKey + "Control\\DeviceClasses\\"
@@ -103,12 +164,19 @@ def getUSBHistory_Live(controlSet="CurrentControlSet"):
 	return usbHistories
 
 def main(winregLoaded):
+	p = argparse.ArgumentParser(description="Search an offline or live system registry's USB History. Only works on NT registries")
+	argGroup = p.add_mutually_exclusive_group(required=True)
+	argGroup.add_argument("-f", "--hiveFileName", help="Full path+filename of the registry hive to parse")
+	argGroup.add_argument("-l", "--live", help="Search a live system registry", const=1, nargs='?')
+	args = p.parse_args()
+	
 	controlSets = ["CurrentControlSet", "ControlSet001", "ControlSet002", "ControlSet003"]
 	for c in controlSets:
 		if winregLoaded is True:
-			entries = getUSBHistory_Live(c)
+			if args.live is not None:
+				entries = getUSBHistory_Live(c)
 		else:
-			entries = getUSBHistory_offline(c)
+			entries = getUSBHistory_Offline(args.hiveFileName, c)
 		print entries	
 
 if __name__ ==  "__main__":
