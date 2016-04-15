@@ -1,3 +1,4 @@
+
 try:
     from _winreg import *
 except Exception, e:
