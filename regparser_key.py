@@ -3,7 +3,7 @@
      https://code.google.com/p/parse-win32registry/ '''
 import sys
 import struct
-from regparser_value import *
+
 
 class RegParser_KeyError:
 	def __init__(self, msg):

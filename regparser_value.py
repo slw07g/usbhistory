@@ -27,7 +27,7 @@ class RegParser_Value:
 		self.dataType,  
 		self.flags) = struct.unpack_from("<I2sHIIIH", self.regData[offset:])
 		
-		if len(regData[RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:]) < self.nameLength:
+		if len(regData[offset + RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:]) < self.nameLength:
 			RegParser_Value.exitError("Invalid Value name Length")
 			
 		self.name = struct.unpack_from(str(self.nameLength) + "s", self.regData[offset+RegParser_Value.REGPARSER_VALUE_HEADER_LENGTH:])[0]
